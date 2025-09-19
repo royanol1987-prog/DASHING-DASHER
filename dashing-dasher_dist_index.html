@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>DASHING DASHER</title>
+  
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GEO RUNNER</title>
+<style>
+body { margin:0; overflow:hidden; font-family:monospace; background:#87ceeb; }
+canvas { display:block; background:#87ceeb; }
+
+#coinsDisplay { position:absolute; top:10px; left:10px; font-size:20px; color:white; }
+#lobby { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:flex; flex-direction:column; align-items:center; justify-content:center; }
+#startBtn { position:absolute; bottom:30px; background:green; color:white; font-size:24px; padding:15px 30px; border:none; border-radius:8px; cursor:pointer; }
+#shopBtns { display:flex; gap:20px; margin-bottom:20px; }
+.shopBtn { background:#5555ff; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-size:16px; }
+#shops { display:none; width:100%; max-width:900px; justify-content:space-between; padding:0 50px; }
+.shop { background:rgba(255,255,255,0.9); padding:10px; border-radius:8px; width:300px; max-height:400px; overflow-y:auto; }
+.shop h3 { margin-top:0; }
+.shop button { width:100%; margin:5px 0; padding:8px; font-size:16px; cursor:pointer; border-radius:5px; }
+#gameoverCoins { position:absolute; top:40%; left:50%; transform:translateX(-50%); font-size:24px; padding:5px 10px; color:white; display:none; }
+#thankYou { position:absolute; top:60%; left:50%; transform:translateX(-50%); font-size:20px; color:#ffff00; display:none; }
+#mobileControls { position:absolute; bottom:20px; width:100%; display:flex; justify-content:space-between; padding:0 40px; }
+.btn { font-size:20px; padding:15px 25px; border:none; border-radius:10px; background:#ff5555; color:white; cursor:pointer; }
+
+#usernameDiv { margin-bottom:20px; }
+#usernameInput { padding:10px; font-size:16px; border-radius:6px; border:none; }
+#setUsernameBtn { padding:10px 20px; font-size:16px; border-radius:6px; border:none; background:#00cc66; color:white; cursor:pointer; }
+#usernameStatus { margin-top:10px; }
+</style>
+</head>
+<body>
+<div id="coinsDisplay">Total Coins: 0</div>
+<div id="lobby">
+    <div id="usernameDiv">
+        <input type="text" id="usernameInput" placeholder="Enter Username" maxlength="15" />
+        <button id="setUsernameBtn">Set Username</button>
+    </div>
+    <p id="usernameStatus" style="color:white;"></p>
+
+    <div id="shopBtns">
+        <button class="shopBtn" id="charShopBtn">CHARACTER SHOP</button>
+        <button class="shopBtn" id="trailShopBtn">TRAILS SHOP</button>
+    </div>
+    <div id="shops">
+        <div class="shop" id="characterShop">
+            <h3>Character Shop</h3>
+        </div>
+        <div class="shop" id="trailShop">
+            <h3>Trail Shop</h3>
+        </div>
+    </div>
+    <button id="startBtn">Start Game</button>
+</div>
+
+<div id="gameoverCoins"></div>
+<div id="thankYou">THANK YOU SHAWON SIR</div>
+
+<div id="mobileControls">
+  <button class="btn" id="jumpBtn">Jump</button>
+  <button class="btn" id="slideBtn">Slide</button>
+</div>
+<canvas id="game"></canvas>
+
+<script>
+// ======== SETUP ========
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const groundHeight = 120;
+let totalCoins = parseInt(localStorage.getItem('coins')) || 0;
+let coins = 0;
+let gameSpeed = 8;
+let gameOver = false;
+
+// Player
+let selectedCharacter = 'Blue Shirt';
+let ownedTrails = JSON.parse(localStorage.getItem('ownedTrails')) || [];
+let selectedTrail = localStorage.getItem('selectedTrail') || null;
+
+const player = {
+    x: 120,
+    y: canvas.height - groundHeight - 50,
+    width: 30,
+    height: 50,
+    dy: 0,
+    gravity: 0.8,
+    jumpPower: -15,
+    sliding: false,
+    slideDuration: 20,
+    slideTimer: 0
+};
+
+// ======== USERNAME SYSTEM ========
+let username = null;
+let takenUsernames = []; // reset usernames
+
+const usernameInput = document.getElementById('usernameInput');
+const setUsernameBtn = document.getElementById('setUsernameBtn');
+const usernameStatus = document.getElementById('usernameStatus');
+
+setUsernameBtn.onclick = () => {
+    const newName = usernameInput.value.trim();
+    if(newName === ""){
+        usernameStatus.textContent = "❌ Please enter a username.";
+        usernameStatus.style.color = "red";
+        return;
+    }
+    if(takenUsernames.includes(newName)){
+        usernameStatus.textContent = "❌ Username already taken!";
+        usernameStatus.style.color = "red";
+        return;
+    }
+
+    username = newName;
+    takenUsernames.push(username);
+
+    usernameStatus.textContent = "✅ Username set: " + username;
+    usernameStatus.style.color = "lime";
+    document.getElementById('usernameDiv').style.display = "none";
+};
+
+// ======== CLOUDS ========
+const clouds = [];
+function spawnCloud(){
+    const size = Math.random()*80+50;
+    const yPos = Math.random()*200+30;
+    clouds.push({ x: canvas.width + size, y: yPos, width: size, height: size/2, speed: Math.random()*1.5+0.5 });
+}
+function drawCloud(cloud){
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    ctx.arc(cloud.x, cloud.y, cloud.height/2, 0, Math.PI*2);
+    ctx.arc(cloud.x+cloud.width/3, cloud.y-cloud.height/4, cloud.height/2, 0, Math.PI*2);
+    ctx.arc(cloud.x+cloud.width/1.5, cloud.y, cloud.height/2, 0, Math.PI*2);
+    ctx.fill();
+}
+let cloudTimer = 0;
+
+// Trails
+let playerTrails = [];
+function createTrail(x,y,color){
+    playerTrails.push({x:x-15,y:y,width:10,height:player.height,color:color,alpha:1});
+}
+function drawTrails(){
+    for(let i=playerTrails.length-1;i>=0;i--){
+        let t=playerTrails[i];
+        ctx.globalAlpha=t.alpha;
+        if(t.color==='rainbow'){
+            const rainbow=['red','orange','yellow','green','blue','indigo','violet'];
+            ctx.fillStyle=rainbow[Math.floor(Math.random()*rainbow.length)];
+        } else ctx.fillStyle=t.color;
+        ctx.fillRect(t.x,t.y,t.width,t.height);
+        t.alpha-=0.05;
+        if(t.alpha<=0) playerTrails.splice(i,1);
+    }
+    ctx.globalAlpha=1;
+}
+
+// ======== OBSTACLES ========
+const obstacles = [];
+const obstacleTypes = [
+    { name:'snake', width:50, height:20, color1:'#00ff00', color2:'#008000', slide:false },
+    { name:'branch', width:80, height:20, color:'#654321', slide:true, sticks:true },
+    { name:'lowFence', width:60, height:25, color:'#aa5500', slide:true, sticks:true },
+    { name:'tree', width:80, height:100, color:'#228B22', slide:true, gapHeight:35 },
+    { name:'tree', width:80, height:100, color:'#FF4500', slide:true, gapHeight:35 },
+    { name:'tree', width:80, height:100, color:'#FFD700', slide:true, gapHeight:35 }
+];
+let obstacleTimer = 0;
+const obstacleInterval = 90;
+let underTree=false;
+
+// ======== PATH COINS ========
+const pathCoins = [];
+const bonusCoins = [];
+let coinTimer = 0;
+let bonusTimer = 0;
+
+// Coins now avoid obstacles
+function spawnPathCoin() {
+    let tries = 0;
+    let yPos;
+    do {
+        yPos = canvas.height - groundHeight - 30 - Math.random()*100;
+        tries++;
+    } while(obstacles.some(o => yPos + 20 > o.y && yPos < o.y + o.height) && tries < 10);
+    pathCoins.push({x: canvas.width, y: yPos, width:20, height:20, value:2, alpha:1});
+}
+
+function spawnBonusCoin() {
+    let tries = 0;
+    let yPos;
+    do {
+        yPos = canvas.height - groundHeight - 30 - Math.random()*100;
+        tries++;
+    } while(obstacles.some(o => yPos + 25 > o.y && yPos < o.y + o.height) && tries < 10);
+    bonusCoins.push({x: canvas.width, y: yPos, width:25, height:25, value:20, alpha:1});
+}
+
+function drawCoins(arr, color){
+    for(let i=arr.length-1;i>=0;i--){
+        let c = arr[i];
+        ctx.globalAlpha = c.alpha;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(c.x + c.width/2, c.y + c.height/2, c.width/2, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        c.x -= gameSpeed;
+
+        if(player.x < c.x + c.width && player.x + player.width > c.x &&
+           player.y < c.y + c.height && player.y + player.height > c.y){
+            coins += c.value;
+            arr.splice(i,1);
+        } else if(c.x + c.width < 0) arr.splice(i,1);
+    }
+}
+
+// ======== CONTROLS ========
+const keys = {};
+window.addEventListener('keydown', e => {
+    if(e.code==='ShiftLeft') keys['shift'] = true;
+    if(e.code==='Space') keys['jump'] = true;
+});
+window.addEventListener('keyup', e => {
+    if(e.code==='ShiftLeft') keys['shift'] = false;
+    if(e.code==='Space') keys['jump'] = false;
+});
+
+// Mobile controls
+document.getElementById('jumpBtn').addEventListener('touchstart',()=>{ keys['jump']=true; setTimeout(()=>keys['jump']=false,100); });
+document.getElementById('slideBtn').addEventListener('touchstart',()=>{ keys['shift']=true; setTimeout(()=>keys['shift']=false,200); });
+document.getElementById('slideBtn').style.marginRight='80px';
+
+// ======== SHOPS ========
+const charShopBtn=document.getElementById('charShopBtn');
+const trailShopBtn=document.getElementById('trailShopBtn');
+const shopsDiv=document.getElementById('shops');
+let charVisible=false;
+let trailVisible=false;
+
+charShopBtn.onclick = () => { charVisible=!charVisible; updateShops(); };
+trailShopBtn.onclick = () => { trailVisible=!trailVisible; updateShops(); };
+function updateShops(){
+    document.getElementById('characterShop').style.display = charVisible?'block':'none';
+    document.getElementById('trailShop').style.display = trailVisible?'block':'none';
+    shopsDiv.style.display = (charVisible||trailVisible)?'flex':'none';
+}
+
+// ======== COINS DISPLAY ========
+function updateCoinsDisplay(){ document.getElementById('coinsDisplay').textContent = 'Total Coins: '+totalCoins; }
+
+// Populate Character Shop
+const characters = [
+    {name:'Blue Shirt', cost:700}, {name:'Red Shirt', cost:700},
+    {name:'Sunglasses', cost:700}, {name:'Red Cap', cost:700}, {name:'Blue Cap', cost:700}
+];
+const charShopDiv = document.getElementById('characterShop');
+characters.forEach(char=>{
+    const btn=document.createElement('button');
+    btn.textContent=`${char.name} - ${char.cost} coins`;
+    btn.onclick = ()=>{ 
+        if(totalCoins>=char.cost){ 
+            totalCoins-=char.cost; 
+            localStorage.setItem('coins', totalCoins); 
+            selectedCharacter=char.name; 
+            updateCoinsDisplay(); 
+            alert(char.name+' selected!'); 
+        } else alert('Not enough coins!'); 
+    };
+    charShopDiv.appendChild(btn);
+});
+
+// Populate Trail Shop
+const trails = [
+    {name:'Trail 1', color:'red', cost:300},{name:'Trail 2', color:'green', cost:600},{name:'Trail 3', color:'blue', cost:900},
+    {name:'Trail 4', color:'yellow', cost:1200},{name:'Trail 5', color:'orange', cost:1500},{name:'Trail 6', color:'purple', cost:1800},
+    {name:'Trail 7', color:'cyan', cost:2100},{name:'Trail 8', color:'pink', cost:2400},{name:'Trail 9', color:'brown', cost:2700},
+    {name:'Trail 10', color:'rainbow', cost:3000},
+];
+const trailShopDiv = document.getElementById('trailShop');
+function refreshTrailShop(){
+    trailShopDiv.innerHTML='<h3>Trail Shop</h3>';
+    trails.forEach(tr=>{
+        const btn=document.createElement('button');
+        if(ownedTrails.includes(tr.color)){
+            btn.textContent = (selectedTrail===tr.color)? `${tr.name} [Selected]` : `${tr.name} [Select]`;
+            btn.onclick = ()=>{ selectedTrail=tr.color; localStorage.setItem('selectedTrail',selectedTrail); refreshTrailShop(); };
+        } else {
+            btn.textContent=`${tr.name} - ${tr.cost} coins`;
+            btn.onclick = ()=>{
+                if(totalCoins>=tr.cost){
+                    totalCoins-=tr.cost;
+                    ownedTrails.push(tr.color);
+                    localStorage.setItem('coins', totalCoins);
+                    localStorage.setItem('ownedTrails', JSON.stringify(ownedTrails));
+                    selectedTrail=tr.color;
+                    localStorage.setItem('selectedTrail',selectedTrail);
+                    updateCoinsDisplay();
+                    refreshTrailShop();
+                } else alert('Not enough coins!');
+            };
+        }
+        trailShopDiv.appendChild(btn);
+    });
+}
+refreshTrailShop();
+
+// ======== DRAW PLAYER & OBSTACLES ========
+function drawPlayer(){
+    if(selectedTrail) createTrail(player.x, player.y, selectedTrail);
+    drawTrails();
+    ctx.fillStyle='#ffcc99';
+    ctx.fillRect(player.x+5,player.y,20,20);
+    if(selectedCharacter==='Red Shirt'){ ctx.fillStyle='red'; }
+    else if(selectedCharacter==='Blue Shirt'){ ctx.fillStyle='blue'; }
+    else if(selectedCharacter==='Sunglasses'){ ctx.fillStyle='blue'; ctx.fillRect(player.x+8,player.y+8,14,6); }
+    else if(selectedCharacter==='Red Cap'){ ctx.fillStyle='red'; ctx.fillRect(player.x+5,player.y,20,8); }
+    else if(selectedCharacter==='Blue Cap'){ ctx.fillStyle='blue'; ctx.fillRect(player.x+5,player.y,20,8); }
+    ctx.fillRect(player.x, player.y+20, player.width, player.height-20);
+
+    if(username){
+        ctx.fillStyle = "black";
+        ctx.font = "16px monospace";
+        ctx.fillText(username, player.x, player.y - 10);
+    }
+}
+
+function drawObstacle(obs){
+    if(obs.name==='snake'){
+        let sway = Math.sin(Date.now()/200)*10;
+        const grad = ctx.createLinearGradient(obs.x+sway,obs.y,obs.x+obs.width+sway,obs.y+obs.height);
+        grad.addColorStop(0,obs.color1); grad.addColorStop(1,obs.color2);
+        ctx.fillStyle=grad;
+        ctx.fillRect(obs.x+sway,obs.y,obs.width,obs.height);
+    } else if(obs.name==='branch' || obs.name==='lowFence'){
+        ctx.fillStyle=obs.color; ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        if(obs.sticks){ ctx.fillStyle='#000'; for(let i=0;i<obs.width;i+=10) ctx.fillRect(obs.x+i, obs.y, 2, obs.height); }
+    } else if(obs.name==='tree'){
+        ctx.fillStyle='#8B4513'; ctx.fillRect(obs.x+obs.width/2-10, obs.y+obs.height/2, 20, obs.height/2);
+        ctx.fillStyle=obs.color; ctx.fillRect(obs.x, obs.y, obs.width, obs.height-obs.gapHeight);
+    }
+}
+
+function spawnObstacle(){
+    const type = obstacleTypes[Math.floor(Math.random()*obstacleTypes.length)];
+    obstacles.push({...type, x:canvas.width, y:canvas.height-groundHeight-type.height, passed:false});
+}
+
+// ======== GAME LOOP ========
+let frame=0;
+function gameLoop(){
+    if(gameOver) return;
+    frame++;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // Clouds
+    cloudTimer++;
+    if(cloudTimer>200){ spawnCloud(); cloudTimer=0; }
+    for(let i=clouds.length-1;i>=0;i--){
+        const c=clouds[i];
+        c.x-=c.speed; drawCloud(c);
+        if(c.x+c.width<0) clouds.splice(i,1);
+    }
+
+    // Ground
+    ctx.fillStyle='#00aa00'; ctx.fillRect(0,canvas.height-groundHeight,canvas.width,groundHeight);
+
+    // Player controls
+    if(keys['jump'] && player.y>=canvas.height-groundHeight-player.height) player.dy=player.jumpPower;
+    if(keys['shift'] && !player.sliding && player.y>=canvas.height-groundHeight-player.height){
+        player.sliding=true; player.slideTimer=player.slideDuration; player.height=25;
+    }
+    if(player.sliding && !underTree){ player.slideTimer--; if(player.slideTimer<=0){ player.sliding=false; player.height=50; } }
+    player.dy+=player.gravity; player.y+=player.dy;
+    if(player.y>canvas.height-groundHeight-player.height){ player.y=canvas.height-groundHeight-player.height; player.dy=0; }
+
+    // Obstacles
+    obstacleTimer++; if(obstacleTimer>=obstacleInterval){ obstacleTimer=0; spawnObstacle(); }
+    underTree=false;
+    obstacles.forEach(obs=>{
+        obs.x-=gameSpeed; drawObstacle(obs);
+        if(player.x<obs.x+obs.width && player.x+player.width>obs.x && player.y<obs.y+obs.height && player.y+player.height>obs.y){
+            if(obs.name==='tree'){
+                const gapTop = obs.y + obs.height - obs.gapHeight;
+                if(player.y+player.height>gapTop && player.sliding) underTree=true;
+                else gameOver=true;
+            } else if(obs.slide && player.sliding){} else gameOver=true;
+
+            if(gameOver){
+                totalCoins+=coins; 
+                localStorage.setItem('coins', totalCoins);
+                const textDiv=document.getElementById('gameoverCoins');
+                const thankDiv=document.getElementById('thankYou');
+                let color='red';
+                if(coins>=50) color='blue';
+                if(coins>=100) color='green';
+                textDiv.style.color=color;
+                textDiv.textContent='Coins Collected: '+coins;
+                textDiv.style.display='block';
+                thankDiv.style.display='block';
+                document.getElementById('lobby').style.display='flex';
+                updateCoinsDisplay();
+                return;
+            }
+        }
+        if(!obs.passed && obs.x+obs.width<player.x){
+            coins++; obs.passed=true;
+        }
+    });
+    obstacles.filter(o=>o.x+o.width>0);
+
+    // Coins on path
+    coinTimer++; bonusTimer++;
+    if(coinTimer>=120){ spawnPathCoin(); coinTimer=0; }
+    if(bonusTimer>=600){ spawnBonusCoin(); bonusTimer=0; }
+    drawCoins(pathCoins,'yellow');
+    drawCoins(bonusCoins,'gold');
+
+    drawPlayer();
+
+    // Coins collected
+    ctx.fillStyle='white'; ctx.font='24px monospace';
+    ctx.fillText('Coins: '+coins, 20, 50);
+
+    requestAnimationFrame(gameLoop);
+}
+
+// ======== START BUTTON ========
+document.getElementById('startBtn').onclick = () => {
+    if(!username){ alert('Please set a username first!'); return; }
+    coins=0; obstacles.length=0; gameOver=false; pathCoins.length=0; bonusCoins.length=0;
+    document.getElementById('lobby').style.display='none';
+    document.getElementById('gameoverCoins').style.display='none';
+    document.getElementById('thankYou').style.display='none';
+    player.y=canvas.height-groundHeight-player.height;
+    gameLoop();
+};
+
+updateCoinsDisplay();
+</script>
+</body>
+</html>
+<!-- partial -->
+  <script  src="./script.js"></script>
+
+</body>
+</html>
